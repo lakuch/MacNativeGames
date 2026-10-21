@@ -76,6 +76,33 @@ static int move(const nvn_texdesc *d, unsigned level, unsigned layer, uint8_t *b
     return 0;
 }
 
+// 只搬一个区域（ReadTexels / WriteTexels）：逐段按块线性地址直接拷，不解整级。段在 16 字节边界处断开（GOB 内 16 字节连续）
+// Copy one region only (ReadTexels / WriteTexels): each segment straight at its block-linear address, without decoding the
+// whole level. Segments break at 16-byte boundaries (16 bytes are contiguous within a GOB)
+int nvn_bl_region(const nvn_texdesc *d, unsigned level, unsigned layer, uint8_t *storage, uint32_t x0, uint32_t y0, uint32_t z0,
+                  uint32_t wb, uint32_t hb, uint32_t nz, uint8_t *lin, size_t row, size_t img, int to_linear, uint64_t *lo, uint64_t *hi) {
+    if (nvn_tex_is_linear(d)) return -1;
+    uint32_t row_bytes, rows, slices, bpb; uint64_t base; unsigned th, td;
+    if (nvn_deswizzle_geom(d, level, layer, &row_bytes, &rows, &slices, &base, &th, &td, &bpb)) return -1;
+    if (x0 + wb > row_bytes || y0 + hb > rows || z0 + nz > slices) return -1;
+    uint64_t mn = UINT64_MAX, mx = 0;
+    for (uint32_t z = 0; z < nz; z++)
+        for (uint32_t y = 0; y < hb; y++) {
+            uint8_t *r = lin + (size_t)z * img + (size_t)y * row;
+            for (uint32_t x = 0; x < wb;) {
+                uint32_t bx = x0 + x, n = 16 - bx % 16; if (n > wb - x) n = wb - x;
+                uint64_t o = base + nvn_bl_offset(bx, y0 + y, z0 + z, row_bytes, rows, th, td);
+                if (storage) { if (to_linear) memcpy(r + x, storage + o, n); else memcpy(storage + o, r + x, n); }
+                if (o < mn) mn = o;
+                if (o + n > mx) mx = o + n;
+                x += n;
+            }
+        }
+    if (lo) *lo = mn == UINT64_MAX ? 0 : mn;
+    if (hi) *hi = mx;
+    return 0;
+}
+
 int nvn_deswizzle(const nvn_texdesc *d, unsigned level, unsigned layer, const void *src, void *dst, size_t dst_pitch) {
     return move(d, level, layer, (uint8_t *)src, (uint8_t *)dst, dst_pitch, 1);
 }

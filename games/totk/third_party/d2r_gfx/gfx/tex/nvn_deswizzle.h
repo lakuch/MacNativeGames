@@ -21,6 +21,14 @@ int nvn_swizzle(const nvn_texdesc *d, unsigned level, unsigned layer, const void
 // Single-point address: within this level and layer, linear (x byte, y block row, z slice) → block-linear byte offset relative to the start of this level and layer (unit tests verify against hand calculation)
 uint64_t nvn_bl_offset(uint32_t x, uint32_t y, uint32_t z, uint32_t row_bytes, uint32_t rows, unsigned tileH, unsigned tileD);
 
+// 区域搬运：本级本层内 (x0 字节, y0 块行, z0 切片) 起、wb 字节 × hb 块行 × nz 切片，与线性缓冲 lin（行距 row、切片距 img）互拷。
+// storage 为 NULL 时只算范围。lo / hi：触到的存储字节范围 [lo, hi)（相对整张贴图存储起点）。不支持的布局（线性等）返回 -1
+// Region copy: within this level and layer, from (x0 bytes, y0 block rows, z0 slices), wb bytes x hb block rows x nz slices,
+// to or from the linear buffer lin (row pitch row, slice pitch img). With storage NULL only the range is computed. lo / hi:
+// the storage bytes touched, [lo, hi) from the start of the whole texture storage. Unsupported layouts (linear etc.) return -1
+int nvn_bl_region(const nvn_texdesc *d, unsigned level, unsigned layer, uint8_t *storage, uint32_t x0, uint32_t y0, uint32_t z0,
+                  uint32_t wb, uint32_t hb, uint32_t nz, uint8_t *lin, size_t row, size_t img, int to_linear, uint64_t *lo, uint64_t *hi);
+
 int nvn_deswizzle_geom(const nvn_texdesc *d, unsigned level, unsigned layer,
                        uint32_t *row_bytes, uint32_t *rows, uint32_t *slices,
                        uint64_t *base, unsigned *tileH, unsigned *tileD, uint32_t *bpb);
